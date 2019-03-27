@@ -34,33 +34,111 @@ Consider the following scenarios:
   - A flight is 15 minutes early 50% of the time, and 15 minutes late 50% of the time.
 
 ```{r}
-
+flights %>%
+  group_by(flight) %>%
+  summarize(early_15_min = sum(arr_delay <= -15, na.rm = TRUE) / n(),
+            late_15_min = sum(arr_delay >= 15, na.rm = TRUE) / n(),
+            n = n()) %>%
+  filter(early_15_min == 0.5,
+         late_15_min == 0.5)
 ```
 
 
   - A flight is always 10 minutes late.
 
 ```{r}
-
+flights %>% 
+  group_by(flight) %>% 
+  summarise(prop.same.late = n_distinct(arr_delay, na.rm = TRUE) / n(), 
+            mean.arr.delay = mean(arr_delay, na.rm = TRUE),
+            n = n()) %>%
+  filter(prop.same.late == 1 & mean.arr.delay == 10)
 ```
 
   - A flight is 30 minutes early 50% of the time, and 30 minutes late 50% of the time.
+  
+```{r}
+flights %>% 
+  group_by(flight) %>% 
+  summarise(early.30.prop = sum(arr_delay <= -30, na.rm = TRUE) / n(),
+            late.30.prop = sum(arr_delay >= 30, na.rm = TRUE) / n(),
+            n = n()) %>% 
+  filter(early.30.prop == .5 & late.30.prop == .5)
+```
 
   - 99% of the time a flight is on time. 1% of the time it’s 2 hours late.
 
 ```{r}
-
+flights %>% 
+  group_by(flight) %>% 
+  summarise(early.prop = sum(arr_delay <= 0, na.rm = TRUE) / n(),
+            late.prop = sum(arr_delay >= 120, na.rm = TRUE) / n(),
+            n = n()) %>% 
+  filter(early.prop == .99 & late.prop == .01 )
 ```
 
 
   - Which is more important: arrival delay or departure delay?
 
+In my opinion arrival delay is worse as with connecting flights it may mess up the following flight. Then again the departure delay brings on arrival delay (unless it is a small one and it can be won bak mid-air), so they are connected.
+
+Also with arrival delay one might have business meeting or other importan time plans at the destination, which would be messed up.
+
 2. Come up with another approach that will give you the same output as not_cancelled %>% count(dest) and not_cancelled %>% count(tailnum, wt = distance) (without using count()).
+
+```{r}
+not_cancelled %>%
+  group_by(dest) %>%
+  summarise(n = length(dest))
+```
+with count 
+
+```{r}
+not_cancelled %>% count(dest)
+```
 
 3. Our definition of cancelled flights (is.na(dep_delay) | is.na(arr_delay) ) is slightly suboptimal. Why? Which is the most important column?
 
+If a flight never departs, then it won’t arrive. A flight could also depart and not arrive if it crashes, or if it is redirected and lands in an airport other than its intended destination. So the most important column is arr_delay, which indicates the amount of delay in arrival.
+
+```{r}
+filter(flights, !is.na(dep_delay), is.na(arr_delay)) %>%
+  select(dep_time, arr_time, sched_arr_time, dep_delay, arr_delay)
+```
+
+
 4. Look at the number of cancelled flights per day. Is there a pattern? Is the proportion of cancelled flights related to the average delay?
+
+```{r}
+cancelled_delayed <-
+  flights %>%
+  mutate(cancelled = (is.na(arr_delay) | is.na(dep_delay))) %>%
+  group_by(year, month, day) %>%
+  summarise(
+    prop_cancelled = mean(cancelled),
+    avg_dep_delay = mean(dep_delay, na.rm = TRUE)
+  )
+cancelled_delayed
+
+ggplot(cancelled_delayed, aes(x = avg_dep_delay, prop_cancelled)) +
+  geom_point() +
+  geom_smooth()
+```
+There is somewhat a pattern with a few exeptions, the more bigger the delay the bigger the change of the flight not departing at all. Though at small delays the standard error is bigger - that it might still happen.
+
 
 5. Which carrier has the worst delays? Challenge: can you disentangle the effects of bad airports vs. bad carriers? Why/why not? (Hint: think about flights %>% group_by(carrier, dest) %>% summarise(n()))
 
+```{r}
+flights %>%
+  group_by(carrier) %>%
+  summarise(arr_delay = mean(arr_delay, na.rm = TRUE)) %>%
+  arrange(desc(arr_delay))
+```
+The most delays is with F9. Which is the "Frontier Airlines Inc.".
+
+You can get part of the way to disentangling the effects of airports versus bad carriers by comparing the average delay of each carrier to the average delay of flights within a route (flights from the same origin to the same destination). Comparing delays between carriers and within each route disentangles the effect of carriers and airports. A better analysis would compare the average delay of a carrier’s flights to the average delay of all other carrier’s flights within a route.
+
 6. What does the sort argument to count() do. When might you use it?
+
+The results are automatically sorted automatically in order. It is useful if you want to see the most commor or least common results, a bit like arrange. 
